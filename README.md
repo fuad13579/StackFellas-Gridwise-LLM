@@ -61,8 +61,8 @@ The service receives a 24-hour campus energy scenario (demand, solar forecast, g
   4. `no_discharge_window`: Disables battery discharging during specified hours.
   5. `max_grid_window`: Grid import cap during specified hours.
   6. `no_op`: Irrelevant notes marked with `applies=false` and `structured_adjustment=null`.
-- **Lossless Battery Accounting**: Enforces $E_{\text{after}} = E_{\text{before}} + \text{charge} - \text{discharge}$ and end-of-day battery neutrality ($E_{23} = E_{\text{initial}}$).
-- **Independent Solution Replay**: Every schedule is re-verified hour-by-hour prior to output emission to guarantee exact feasibility.
+- **Battery State Tracking**: The optimizer enforces per-hour energy balance and cumulative battery bounds while respecting charge/discharge caps and reserve constraints.
+- **Independent Solution Replay**: Every schedule is re-verified hour-by-hour prior to output emission to guarantee exact feasibility for the published constraints and directives.
 
 ---
 
@@ -172,6 +172,49 @@ curl -X POST http://localhost:8000/optimize-energy \
       "max_discharge_kwh_per_hour": 50
     }
   }'
+```
+
+### Sample Response
+
+The API returns the note interpretation plus the resulting hourly schedule and aggregate cost metrics.
+
+```json
+{
+  "scenario_id": "SAMPLE-01",
+  "directive_interpretation": [
+    {
+      "note_index": 0,
+      "applies": true,
+      "directive_type": "solar_reduction",
+      "structured_adjustment": {
+        "hours": [12, 13, 14],
+        "factor": 0.25
+      },
+      "explanation": "Solar output is reduced during the cleaning window."
+    },
+    {
+      "note_index": 1,
+      "applies": false,
+      "directive_type": "no_op",
+      "structured_adjustment": null,
+      "explanation": "This note is unrelated to the current 24-hour energy schedule."
+    }
+  ],
+  "hourly_plan": [
+    {
+      "hour": 0,
+      "grid_kwh": 90.0,
+      "solar_used_kwh": 0.0,
+      "battery_action": "idle",
+      "battery_kwh": 0.0,
+      "battery_energy_after_kwh": 110.0
+    }
+  ],
+  "total_grid_kwh": 2450.5,
+  "total_cost_bdt": 30164.25,
+  "peak_grid_kwh": 185.0,
+  "plan_summary": "Optimized 24-hour schedule applying 1 operator directive(s). Total grid import: 2450.5 kWh, cost: 30164.25 BDT, peak grid: 185.0 kWh."
+}
 ```
 
 ---

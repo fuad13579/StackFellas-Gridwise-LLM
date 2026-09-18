@@ -104,6 +104,8 @@ LLM_MODEL=gpt-4o-mini
 # Optional Performance Settings
 LLM_TIMEOUT_SECONDS=30
 SOLVER_TIME_LIMIT_SECONDS=10
+# Total /optimize-energy request deadline (maximum 30 seconds)
+REQUEST_TIMEOUT_SECONDS=30
 LOG_LEVEL=INFO
 ```
 

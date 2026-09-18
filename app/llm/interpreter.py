@@ -1,6 +1,7 @@
 """HTTP LLM client for chat-completions-compatible API endpoints."""
 
 import logging
+import time
 
 import httpx
 
@@ -18,7 +19,7 @@ class LLMInterpreter:
         self.settings = settings
         self.transport = transport
 
-    def interpret(self, request: OptimizeRequest) -> str:
+    def interpret(self, request: OptimizeRequest, deadline: float | None = None) -> str:
         settings = self.settings
         if not (
             settings.llm_api_url
@@ -30,9 +31,14 @@ class LLMInterpreter:
                 "Set LLM_API_URL, LLM_API_KEY, and LLM_MODEL before optimizing.",
                 503,
             )
+        timeout = settings.llm_timeout_seconds
+        if deadline is not None:
+            timeout = min(timeout, deadline - time.monotonic())
+            if timeout <= 0:
+                raise AppError("request_timeout", "The optimization request exceeded its time limit.", 504)
         try:
             with httpx.Client(
-                timeout=settings.llm_timeout_seconds,
+                timeout=timeout,
                 transport=self.transport,
                 follow_redirects=False,
             ) as client:

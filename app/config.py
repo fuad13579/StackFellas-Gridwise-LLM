@@ -17,6 +17,7 @@ class Settings(BaseModel):
     llm_model: str = ""
     llm_timeout_seconds: float = Field(default=30, gt=0, le=120)
     solver_time_limit_seconds: float = Field(default=10, gt=0, le=120)
+    request_timeout_seconds: float = Field(default=30, gt=0, le=30)
     log_level: str = "INFO"
 
     @field_validator("llm_api_url")

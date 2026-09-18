@@ -1,6 +1,7 @@
 """SciPy linprog LP optimizer for 24-hour minimum-cost energy scheduling."""
 
 import logging
+import time
 import numpy as np
 from scipy.optimize import linprog
 
@@ -17,8 +18,12 @@ def solve_optimization(
     constraints: NormalizedConstraints,
     settings: Settings,
     interpretations: list,
+    deadline: float | None = None,
 ) -> OptimizeResponse:
     """Solves the 24-hour energy cost minimization LP using scipy.optimize.linprog."""
+
+    if deadline is not None and deadline <= time.monotonic():
+        raise AppError("request_timeout", "The optimization request exceeded its time limit.", 504)
 
     # Decision variables (96 total):
     # 0..23: g_h (grid purchase)
@@ -105,6 +110,12 @@ def solve_optimization(
         b_ub[row_idx] = capacity - initial_e
         row_idx += 1
 
+    solver_time_limit = settings.solver_time_limit_seconds
+    if deadline is not None:
+        solver_time_limit = min(solver_time_limit, deadline - time.monotonic())
+        if solver_time_limit <= 0:
+            raise AppError("request_timeout", "The optimization request exceeded its time limit.", 504)
+
     res = linprog(
         c_stage1,
         A_ub=A_ub,
@@ -113,7 +124,7 @@ def solve_optimization(
         b_eq=b_eq,
         bounds=bounds,
         method="highs",
-        options={"time_limit": settings.solver_time_limit_seconds},
+        options={"time_limit": solver_time_limit},
     )
 
     if not res.success:
@@ -133,6 +144,11 @@ def solve_optimization(
     c_stage2 = np.zeros(96)
     c_stage2[48:96] = 1.0  # minimize charge + discharge throughput
 
+    if deadline is not None:
+        solver_time_limit = min(settings.solver_time_limit_seconds, deadline - time.monotonic())
+        if solver_time_limit <= 0:
+            raise AppError("request_timeout", "The optimization request exceeded its time limit.", 504)
+
     res_stage2 = linprog(
         c_stage2,
         A_ub=A_ub_stage2,
@@ -141,7 +157,7 @@ def solve_optimization(
         b_eq=b_eq,
         bounds=bounds,
         method="highs",
-        options={"time_limit": settings.solver_time_limit_seconds},
+        options={"time_limit": solver_time_limit},
     )
 
     x_sol = res_stage2.x if res_stage2.success else res.x

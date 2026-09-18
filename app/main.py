@@ -1,6 +1,7 @@
 """FastAPI application entry point for GridWise SmartGrid AI backend."""
 
 import logging
+import time
 from typing import Any
 
 from fastapi import FastAPI, Request, status
@@ -16,7 +17,11 @@ from app.optimizer.solver import solve_optimization
 from app.optimizer.validator import validate_solution
 from app.schemas import OptimizeRequest, OptimizeResponse
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+_startup_settings = get_settings()
+logging.basicConfig(
+    level=getattr(logging, _startup_settings.log_level),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 logger = logging.getLogger("gridwise")
 
 app = FastAPI(
@@ -79,10 +84,11 @@ async def health_check() -> dict[str, str]:
 @app.post("/optimize-energy", status_code=status.HTTP_200_OK, response_model=OptimizeResponse)
 async def optimize_energy(req: OptimizeRequest) -> OptimizeResponse:
     settings = get_settings()
+    deadline = time.monotonic() + settings.request_timeout_seconds
 
     # 1. LLM Interpretation
     interpreter = LLMInterpreter(settings)
-    raw_llm_output = interpreter.interpret(req)
+    raw_llm_output = interpreter.interpret(req, deadline=deadline)
 
     # 2. Deterministic Validation
     interpretations = validate_directives(raw_llm_output, req)
@@ -91,7 +97,9 @@ async def optimize_energy(req: OptimizeRequest) -> OptimizeResponse:
     normalized_constraints = normalize_directives(req, interpretations)
 
     # 4. LP Optimization
-    response = solve_optimization(req, normalized_constraints, settings, interpretations)
+    response = solve_optimization(
+        req, normalized_constraints, settings, interpretations, deadline=deadline
+    )
 
     # 5. Independent Solution Replay Verification
     validate_solution(req, normalized_constraints, response)

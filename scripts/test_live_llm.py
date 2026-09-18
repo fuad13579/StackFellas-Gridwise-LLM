@@ -69,8 +69,8 @@ def run_live_tests(base_url: str, target_case_id: str | None = None) -> None:
                 print(f"  [PASS] {case_id} optimal cost matched within tolerance.")
                 passed += 1
             else:
-                print(f"  [WARN] {case_id} feasible solution returned, cost difference {round(cost_diff, 4)} BDT.")
-                passed += 1  # Feasible schedule returned
+                print(f"  [FAIL] {case_id} cost difference {round(cost_diff, 4)} BDT exceeds tolerance.")
+                failed += 1
 
         except Exception as exc:
             print(f"  [FAIL] Exception during request: {exc}")

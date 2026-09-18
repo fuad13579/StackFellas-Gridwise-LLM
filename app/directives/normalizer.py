@@ -46,7 +46,7 @@ def normalize_directives(
 
         if item.directive_type == DirectiveType.SOLAR_REDUCTION:
             for h in adj.hours:
-                effective_solar[h] = base_solar[h] * adj.factor
+                effective_solar[h] = min(effective_solar[h], base_solar[h] * adj.factor)
 
         elif item.directive_type == DirectiveType.MINIMUM_BATTERY_RESERVE:
             for h in adj.hours:

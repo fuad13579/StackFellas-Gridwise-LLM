@@ -5,7 +5,7 @@
 [![SciPy](https://img.shields.io/badge/SciPy-linprog-orange.svg)](https://scipy.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Backend service for **StackFellas SmartGrid AI**, built for the **BUP CSE Fest 2026 Hackathon (Preliminary Round)**. 
+Backend service for **StackFellas SmartGrid AI**, built for the **BUP CSE Fest 2026 Hackathon (Preliminary Round)**.
 
 The service receives a 24-hour campus energy scenario (demand, solar forecast, grid tariff) alongside 1–3 natural-language campus operator notes. It uses an LLM to interpret operator directives into structured constraints, validates them deterministically, optimizes grid electricity costs using linear programming (`scipy.optimize.linprog`), and independently replays the schedule for validation before returning a 24-hour operating plan.
 
@@ -21,7 +21,7 @@ The service receives a 24-hour campus energy scenario (demand, solar forecast, g
                                                  ▼
                                   ┌───────────────────────────────┐
                                   │   1. LLM Directive Interpreter│
-                                  │   (OpenAI / Custom Provider)  │
+                                  │ (OpenRouter/OpenAI-compatible)│
                                   └──────────────┬────────────────┘
                                                  │
                                                  ▼
@@ -54,6 +54,8 @@ The service receives a 24-hour campus energy scenario (demand, solar forecast, g
 
 - **GET /health**: Instant process readiness check (`{"status": "ok"}`).
 - **POST /optimize-energy**: Complete scenario optimization pipeline within the 30-second deadline.
+- **Strict request validation**: Invalid JSON and schema violations return JSON-safe HTTP 400 errors.
+- **Bounded runtime**: The API uses a total 30-second request deadline shared by the LLM and optimizer stages.
 - **Supported Operator Directives**:
   1. `solar_reduction`: Usable solar output reduction during specific hours. (`factor` = fraction remaining).
   2. `minimum_battery_reserve`: Elevated minimum battery energy reserve during specific hours.
@@ -62,7 +64,15 @@ The service receives a 24-hour campus energy scenario (demand, solar forecast, g
   5. `max_grid_window`: Grid import cap during specified hours.
   6. `no_op`: Irrelevant notes marked with `applies=false` and `structured_adjustment=null`.
 - **Battery State Tracking**: The optimizer enforces per-hour energy balance and cumulative battery bounds while respecting charge/discharge caps and reserve constraints.
+- **Two-stage optimization**: Stage 1 minimizes grid electricity cost only; Stage 2 keeps that cost optimal while minimizing battery throughput.
 - **Independent Solution Replay**: Every schedule is re-verified hour-by-hour prior to output emission to guarantee exact feasibility for the published constraints and directives.
+
+### Request Rules
+
+- `operator_notes` contains 1-3 non-empty strings. Notes are stripped before validation; whitespace-only notes are rejected with HTTP 400.
+- `hours` contains exactly one entry for every hour 0 through 23. Entries may arrive in any order and are normalized to ascending hour order before optimization.
+- `battery.capacity_kwh` must be positive. Initial and minimum energy cannot exceed capacity.
+- Directive hours use start-inclusive, end-exclusive windows. For example, 1 PM to 3 PM maps to `[13, 14]`.
 
 ---
 
@@ -96,10 +106,10 @@ pip install -r requirements.txt
 Create a `.env` file in the root directory (refer to `.env.example`):
 
 ```env
-# LLM Provider Credentials
-LLM_API_URL=https://api.openai.com/v1/chat/completions
+# LLM Provider Credentials (OpenAI-compatible API)
+LLM_API_URL=https://openrouter.ai/api/v1/chat/completions
 LLM_API_KEY=your-api-key-here
-LLM_MODEL=gpt-4o-mini
+LLM_MODEL=openai/gpt-4o-mini
 
 # Optional Performance Settings
 LLM_TIMEOUT_SECONDS=30
@@ -108,6 +118,8 @@ SOLVER_TIME_LIMIT_SECONDS=10
 REQUEST_TIMEOUT_SECONDS=30
 LOG_LEVEL=INFO
 ```
+
+`LLM_API_URL`, `LLM_API_KEY`, and `LLM_MODEL` are required for `/optimize-energy`. The service starts without them so `/health` and offline tests remain available, but optimization requests return HTTP 503 until an LLM provider is configured. Never commit `.env` or real API keys.
 
 ---
 
@@ -189,7 +201,7 @@ The API returns the note interpretation plus the resulting hourly schedule and a
       "applies": true,
       "directive_type": "solar_reduction",
       "structured_adjustment": {
-        "hours": [12, 13, 14],
+        "hours": [12, 13],
         "factor": 0.25
       },
       "explanation": "Solar output is reduced during the cleaning window."
@@ -231,6 +243,8 @@ Run unit tests and verify optimization against ground-truth interpretations for 
 pytest -v
 ```
 
+The suite currently includes the 10 official public optimization cases, directive validation, API error handling, timeout behavior, overlapping solar reductions, and 24 paraphrase contract cases. The current baseline is 50 passing tests.
+
 ### Live LLM Test Script
 
 Run public sample cases against a live running API instance using real LLM API calls:
@@ -238,6 +252,47 @@ Run public sample cases against a live running API instance using real LLM API c
 ```bash
 python scripts/test_live_llm.py --url http://localhost:8000
 ```
+
+Useful options:
+
+```bash
+python scripts/test_live_llm.py \
+  --url http://localhost:8000 \
+  --case SAMPLE-01 \
+  --request-timeout 35 \
+  --health-timeout 10
+```
+
+The live runner checks `/health`, validates the optimization response shape, compares `total_cost_bdt` with the public reference within `0.01` BDT, and exits non-zero on any failure. It requires a running API configured with a real OpenAI-compatible provider.
+
+### Real-LLM Benchmarks
+
+For 10 public cases with three real LLM runs per case:
+
+```bash
+python scripts/evaluate_30_runs.py
+```
+
+For a single run across the public cases with latency reporting:
+
+```bash
+python scripts/benchmark_latency.py
+```
+
+These scripts call the provider directly and require the same `.env` configuration. They may consume provider credits.
+
+### Error Responses
+
+The API returns a JSON object with an `error` object for controlled failures:
+
+| Status | Code examples | Meaning |
+| --- | --- | --- |
+| 400 | `invalid_request` | Malformed JSON or invalid request schema, including whitespace-only notes. |
+| 409 | `infeasible` | No schedule satisfies the scenario and directive constraints. |
+| 502 | `llm_unavailable`, `invalid_llm_output` | Provider failure or rejected model output. |
+| 503 | `llm_not_configured` | Required LLM settings are missing. |
+| 504 | `request_timeout` | The total 30-second request deadline was exceeded. |
+| 500 | `invalid_solution`, `internal_error` | Unexpected internal or replay-validation failure. |
 
 ---
 
@@ -287,7 +342,9 @@ curl http://localhost:8000/health
 ├── docs/
 │   └── API_CONTRACT.md     # Official API specification
 ├── scripts/
-│   └── test_live_llm.py    # Live API test runner
+│   ├── test_live_llm.py    # Live API test runner
+│   ├── evaluate_30_runs.py # 30-call directive/latency benchmark
+│   └── benchmark_latency.py # Single-pass latency benchmark
 ├── tests/                  # Pytest suite (unit & public case tests)
 ├── Dockerfile              # Production container build recipe
 ├── requirements.txt        # Python package requirements

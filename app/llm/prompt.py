@@ -29,7 +29,8 @@ CRITICAL INSTRUCTIONS:
 
 5. TIME WINDOW CONVENTION:
    - Hours are 0 to 23 representing 1-hour intervals [hour, hour+1).
-   - Time windows are start-inclusive and end-exclusive.
+   - Convert both clock times first, then use range(start_hour, end_hour) [start-inclusive, end-exclusive].
+   - Example: "6 PM until 10 PM" -> start=18, end=22 -> hours [18, 19, 20, 21].
    - "1 PM to 3 PM" (13:00 to 15:00) -> hours [13, 14].
    - "noon until 2 PM" (12:00 to 14:00) -> hours [12, 13].
    - "2 PM to 4 PM" (14:00 to 16:00) -> hours [14, 15].

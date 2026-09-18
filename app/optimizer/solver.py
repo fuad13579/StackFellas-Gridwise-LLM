@@ -60,11 +60,9 @@ def solve_optimization(
         else:
             bounds.append((0.0, max_d_rate))
 
-    # Objective: minimize sum(g_h * tariff_h) + tiny penalty on battery throughput to prevent simultaneous c/d
+    # Objective Stage 1: minimize grid electricity purchase cost ONLY
     c_stage1 = np.zeros(96)
     c_stage1[:24] = tariffs
-    c_stage1[48:72] = 1e-6  # tiny tie-breaker charge penalty
-    c_stage1[72:96] = 1e-6  # tiny tie-breaker discharge penalty
 
     # Equality constraints A_eq * x = b_eq
     # 1. Energy balance per hour: g_h + s_h - c_h + d_h = demand_h  (24 rows)

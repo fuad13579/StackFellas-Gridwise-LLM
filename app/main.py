@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
 from app.config import get_settings
@@ -55,7 +56,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
             "error": {
                 "code": "invalid_request",
                 "message": "The request body is malformed or structurally invalid.",
-                "details": exc.errors(),
+                "details": jsonable_encoder(exc.errors()),
             }
         },
     )

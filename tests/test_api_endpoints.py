@@ -23,6 +23,33 @@ def test_optimize_energy_malformed_request():
     assert data["error"]["code"] == "invalid_request"
 
 
+def test_optimize_energy_whitespace_note_returns_json_safe_400():
+    payload = {
+        "scenario_id": "MALFORMED-01",
+        "operator_notes": ["   "],
+        "hours": [
+            {"hour": h, "demand_kwh": 100.0, "solar_kwh": 10.0, "tariff_bdt_per_kwh": 5.0}
+            for h in range(24)
+        ],
+        "battery": {
+            "capacity_kwh": 200.0,
+            "initial_energy_kwh": 100.0,
+            "minimum_energy_kwh": 20.0,
+            "max_charge_kwh_per_hour": 50.0,
+            "max_discharge_kwh_per_hour": 50.0,
+        },
+    }
+
+    response = TestClient(app, raise_server_exceptions=False).post(
+        "/optimize-energy", json=payload
+    )
+
+    assert response.status_code == 400
+    data = response.json()
+    assert data["error"]["code"] == "invalid_request"
+    assert data["error"]["details"][0]["type"] == "value_error"
+
+
 @patch("app.main.LLMInterpreter")
 def test_optimize_energy_success(mock_interpreter_cls):
     mock_instance = MagicMock()

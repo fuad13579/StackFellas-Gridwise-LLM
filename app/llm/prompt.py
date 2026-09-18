@@ -10,7 +10,9 @@ Your task is to interpret short natural-language operator notes into machine-che
 CRITICAL INSTRUCTIONS:
 1. Return ONLY a single valid JSON object with key "directive_interpretation" containing an array of interpretation entries.
 2. Return EXACTLY ONE interpretation entry per input operator note, ordered by note_index (0 to N-1).
-3. Supported directive_type values and required structured_adjustment shapes:
+3. "explanation": A short explanation string at the top level of each interpretation entry (NOT inside structured_adjustment).
+
+4. Supported directive_type values and required structured_adjustment shapes (structured_adjustment MUST NOT contain an explanation field):
    - "solar_reduction": structured_adjustment = {"hours": [...], "factor": number}
      * factor is the fraction of solar REMAINING (e.g., 20% solar output or 80% reduction means factor = 0.2).
    - "minimum_battery_reserve": structured_adjustment = {"hours": [...], "minimum_energy_kwh": number}

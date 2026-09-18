@@ -54,6 +54,17 @@ def validate_directives(raw_output: str, request: OptimizeRequest) -> list[Direc
             object_pairs_hook=_unique_object,
             parse_constant=_reject_constant,
         )
+
+        # Pre-validation normalization: hoist explanation if LLM placed it inside structured_adjustment
+        if isinstance(data, dict) and isinstance(data.get("directive_interpretation"), list):
+            for item in data["directive_interpretation"]:
+                if isinstance(item, dict) and isinstance(item.get("structured_adjustment"), dict):
+                    adj_dict = item["structured_adjustment"]
+                    if "explanation" in adj_dict:
+                        exp = adj_dict.pop("explanation")
+                        if not item.get("explanation"):
+                            item["explanation"] = exp
+
         parsed = LLMInterpretationOutput.model_validate(data)
         interpretations = parsed.directive_interpretation
 

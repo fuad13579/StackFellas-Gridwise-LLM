@@ -243,7 +243,7 @@ Run unit tests and verify optimization against ground-truth interpretations for 
 pytest -v
 ```
 
-The suite currently includes the 10 official public optimization cases, directive validation, API error handling, timeout behavior, overlapping solar reductions, and 24 paraphrase contract cases. The current baseline is 50 passing tests.
+The suite currently includes the 10 official public optimization cases, malformed-input validation, boundary and edge-case handling, directive validation, constraint normalization, LP solver edge cases, independent solution replay verification, API error handling, timeout behavior, overlapping directives, and 24 paraphrase contract cases (156 passing tests).
 
 ### Live LLM Test Script
 

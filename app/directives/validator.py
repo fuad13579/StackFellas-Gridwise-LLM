@@ -39,7 +39,7 @@ def validate_directive_hours(hours: list[int]) -> None:
         raise ValueError("Directive hours must be unique integers")
     if hours != sorted(hours):
         raise ValueError("Directive hours must be in strictly ascending order")
-    if any(h < 0 or h > 23 for h in hours):
+    if any(type(h) is not int or h < 0 or h > 23 for h in hours):
         raise ValueError("Directive hours must be integers between 0 and 23")
 
 

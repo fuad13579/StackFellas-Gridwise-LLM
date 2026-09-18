@@ -45,6 +45,8 @@ class BatteryInput(BaseModel):
             raise ValueError("initial_energy_kwh cannot exceed capacity_kwh")
         if self.minimum_energy_kwh > self.capacity_kwh:
             raise ValueError("minimum_energy_kwh cannot exceed capacity_kwh")
+        if self.minimum_energy_kwh > self.initial_energy_kwh:
+            raise ValueError("minimum_energy_kwh cannot exceed initial_energy_kwh")
         return self
 
 
@@ -55,6 +57,14 @@ class OptimizeRequest(BaseModel):
     operator_notes: Annotated[list[str], Field(min_length=1, max_length=3)]
     hours: Annotated[list[HourInput], Field(min_length=24, max_length=24)]
     battery: BatteryInput
+
+    @field_validator("scenario_id")
+    @classmethod
+    def validate_scenario_id(cls, v: str) -> str:
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("scenario_id cannot be empty or whitespace only")
+        return cleaned
 
     @field_validator("operator_notes")
     @classmethod
@@ -131,6 +141,14 @@ class DirectiveInterpretation(BaseModel):
     directive_type: DirectiveType
     structured_adjustment: StructuredAdjustment = None
     explanation: Annotated[str, Field(min_length=1)]
+
+    @field_validator("explanation")
+    @classmethod
+    def validate_explanation(cls, v: str) -> str:
+        cleaned = v.strip()
+        if not cleaned:
+            raise ValueError("explanation cannot be empty or whitespace only")
+        return cleaned
 
     @model_validator(mode="after")
     def validate_applies_and_adjustment(self) -> "DirectiveInterpretation":

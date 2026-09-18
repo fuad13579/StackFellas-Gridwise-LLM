@@ -69,3 +69,35 @@ def test_battery_initial_exceeds_capacity():
             max_charge_kwh_per_hour=50.0,
             max_discharge_kwh_per_hour=50.0,
         )
+
+
+def test_unsorted_hours_are_accepted_and_sorted():
+    hours = list(reversed(make_valid_hours()))
+
+    req = OptimizeRequest(
+        scenario_id="TEST-04",
+        operator_notes=["Note"],
+        hours=hours,
+        battery=make_valid_battery(),
+    )
+
+    assert [entry.hour for entry in req.hours] == list(range(24))
+
+
+def test_duplicate_hour_is_rejected():
+    hours = make_valid_hours()
+    hours[-1] = HourInput(
+        hour=22,
+        demand_kwh=100.0,
+        solar_kwh=0.0,
+        tariff_bdt_per_kwh=10.0,
+    )
+
+    with pytest.raises(ValidationError):
+        OptimizeRequest(
+            scenario_id="TEST-05",
+            operator_notes=["Note"],
+            hours=hours,
+            battery=make_valid_battery(),
+        )
+

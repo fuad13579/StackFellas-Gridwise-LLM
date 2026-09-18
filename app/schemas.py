@@ -66,11 +66,18 @@ class OptimizeRequest(BaseModel):
 
     @field_validator("hours")
     @classmethod
-    def validate_hours_sequence(cls, hours: list[HourInput]) -> list[HourInput]:
-        hours_list = [h.hour for h in hours]
-        if hours_list != list(range(24)):
-            raise ValueError("hours array must contain exactly 24 unique entries for hours 0 through 23 in ascending order")
-        return hours
+    def validate_and_sort_hours(cls, hours: list[HourInput]) -> list[HourInput]:
+        hour_numbers = [h.hour for h in hours]
+
+        # The request may provide the 24 hourly entries in any order.
+        # Validate coverage/uniqueness first, then normalize to ascending order
+        # so downstream code can safely use list index == hour.
+        if len(hour_numbers) != 24:
+            raise ValueError("hours array must contain exactly 24 entries")
+        if set(hour_numbers) != set(range(24)):
+            raise ValueError("hours array must contain each hour from 0 through 23 exactly once")
+
+        return sorted(hours, key=lambda h: h.hour)
 
 
 class SolarReductionAdjustment(BaseModel):

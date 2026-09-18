@@ -65,7 +65,8 @@ def solve_optimization(
         else:
             bounds.append((0.0, max_d_rate))
 
-    # Objective Stage 1: minimize grid electricity purchase cost ONLY
+    # Objective Stage 1: minimize ONLY grid electricity cost.
+    # Do not add battery-throughput penalties here; Stage 2 handles tie-breaking.
     c_stage1 = np.zeros(96)
     c_stage1[:24] = tariffs
 
@@ -135,7 +136,8 @@ def solve_optimization(
             409,
         )
 
-    # Perform Stage 2 to minimize battery throughput if needed
+    # Stage 2: among schedules with the same optimal grid cost, minimize
+    # battery throughput to avoid unnecessary simultaneous charge/discharge.
     opt_grid_cost = float(np.sum(res.x[:24] * tariffs))
     A_ub_stage2 = np.vstack([A_ub, np.zeros((1, 96))])
     A_ub_stage2[-1, :24] = tariffs
@@ -162,11 +164,12 @@ def solve_optimization(
 
     x_sol = res_stage2.x if res_stage2.success else res.x
 
-    # Extract solution rows
-    grid_sol = np.maximum(0.0, x_sol[:24])
-    solar_sol = np.maximum(0.0, x_sol[24:48])
-    charge_sol = np.maximum(0.0, x_sol[48:72])
-    discharge_sol = np.maximum(0.0, x_sol[72:96])
+    # Extract the solver result directly. Do not clip values after optimization;
+    # the independent replay validator should catch any actual bound violation.
+    grid_sol = x_sol[:24]
+    solar_sol = x_sol[24:48]
+    charge_sol = x_sol[48:72]
+    discharge_sol = x_sol[72:96]
 
     hourly_plan: list[HourlyPlanRow] = []
     current_e = initial_e
@@ -177,7 +180,7 @@ def solve_optimization(
         c = float(charge_sol[h])
         d = float(discharge_sol[h])
 
-        # Clean tiny solver residuals
+        # Normalize only negligible floating-point residuals for clean JSON output.
         if abs(g) < 1e-6:
             g = 0.0
         if abs(s) < 1e-6:
@@ -198,10 +201,9 @@ def solve_optimization(
             action = BatteryAction.IDLE
             b_kwh = 0.0
 
+        # Report the state implied by the solver; do not repair/clip it.
         current_e += net_flow
-        # Ensure battery energy after is properly clipped to valid bounds
-        e_after = float(np.clip(current_e, constraints.min_battery_reserve[h], capacity))
-        current_e = e_after
+        e_after = float(current_e)
 
         hourly_plan.append(
             HourlyPlanRow(
@@ -214,17 +216,24 @@ def solve_optimization(
             )
         )
 
-    # Force exact end-of-day initial energy if within floating point residual
-    hourly_plan[23].battery_energy_after_kwh = round(initial_e, 6)
-
     total_grid_kwh = float(sum(row.grid_kwh for row in hourly_plan))
-    total_cost_bdt = float(sum(row.grid_kwh * request.hours[row.hour].tariff_bdt_per_kwh for row in hourly_plan))
+    total_cost_bdt = float(
+        sum(
+            row.grid_kwh * request.hours[row.hour].tariff_bdt_per_kwh
+            for row in hourly_plan
+        )
+    )
     peak_grid_kwh = float(max(row.grid_kwh for row in hourly_plan))
 
-    applied_directives_count = sum(1 for item in interpretations if item.applies and item.directive_type != "no_op")
+    applied_directives_count = sum(
+        1
+        for item in interpretations
+        if item.applies and item.directive_type != "no_op"
+    )
     plan_summary = (
         f"Optimized 24-hour schedule applying {applied_directives_count} operator directive(s). "
-        f"Total grid import: {round(total_grid_kwh, 2)} kWh, cost: {round(total_cost_bdt, 2)} BDT, peak grid: {round(peak_grid_kwh, 2)} kWh."
+        f"Total grid import: {round(total_grid_kwh, 2)} kWh, cost: {round(total_cost_bdt, 2)} BDT, "
+        f"peak grid: {round(peak_grid_kwh, 2)} kWh."
     )
 
     return OptimizeResponse(

@@ -108,3 +108,11 @@ def test_unsorted_hours():
     with pytest.raises(AppError) as excinfo:
         validate_directives(raw, req)
     assert excinfo.value.code == "invalid_llm_output"
+
+
+def test_invalid_llm_output_does_not_echo_raw_content():
+    req = make_sample_request()
+    raw = '{"directive_interpretation": [{"synthetic_secret":"must-not-echo"}]}'
+    with pytest.raises(AppError) as excinfo:
+        validate_directives(raw, req)
+    assert "must-not-echo" not in excinfo.value.message

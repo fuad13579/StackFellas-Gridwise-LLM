@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from app.errors import AppError
+from app.directives.time_windows import explicit_time_window_hours
 from app.schemas import (
     DirectiveInterpretation,
     DirectiveType,
@@ -43,6 +44,24 @@ def validate_directive_hours(hours: list[int]) -> None:
         raise ValueError("Directive hours must be integers between 0 and 23")
 
 
+def _canonicalize_explicit_windows(
+    interpretations: list[DirectiveInterpretation], request: OptimizeRequest
+) -> list[DirectiveInterpretation]:
+    """Replace only LLM-supplied hours when the original note has a clear range."""
+    canonicalized: list[DirectiveInterpretation] = []
+    for item in interpretations:
+        if item.directive_type == DirectiveType.NO_OP or item.structured_adjustment is None:
+            canonicalized.append(item)
+            continue
+        hours = explicit_time_window_hours(request.operator_notes[item.note_index])
+        if hours is None:
+            canonicalized.append(item)
+            continue
+        adjustment = item.structured_adjustment.model_copy(update={"hours": hours})
+        canonicalized.append(item.model_copy(update={"structured_adjustment": adjustment}))
+    return canonicalized
+
+
 def validate_directives(raw_output: str, request: OptimizeRequest) -> list[DirectiveInterpretation]:
     """Deterministically validates LLM JSON output against strict official rules."""
     try:
@@ -66,7 +85,9 @@ def validate_directives(raw_output: str, request: OptimizeRequest) -> list[Direc
                             item["explanation"] = exp
 
         parsed = LLMInterpretationOutput.model_validate(data)
-        interpretations = parsed.directive_interpretation
+        interpretations = _canonicalize_explicit_windows(
+            parsed.directive_interpretation, request
+        )
 
         expected_count = len(request.operator_notes)
         if len(interpretations) != expected_count:
@@ -122,6 +143,6 @@ def validate_directives(raw_output: str, request: OptimizeRequest) -> list[Direc
     except (ValidationError, ValueError, TypeError, RecursionError, KeyError) as exc:
         raise AppError(
             "invalid_llm_output",
-            f"The LLM output failed directive validation: {exc}",
+            "The LLM output failed deterministic directive validation.",
             502,
         ) from exc

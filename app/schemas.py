@@ -6,6 +6,10 @@ from typing import Annotated, Any, Literal, Union
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
+Hour = Annotated[int, Field(ge=0, le=23, strict=True)]
+NoteIndex = Annotated[int, Field(ge=0, strict=True)]
+
+
 class DirectiveType(str, Enum):
     SOLAR_REDUCTION = "solar_reduction"
     MINIMUM_BATTERY_RESERVE = "minimum_battery_reserve"
@@ -24,7 +28,7 @@ class BatteryAction(str, Enum):
 class HourInput(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
-    hour: Annotated[int, Field(ge=0, le=23)]
+    hour: Hour
     demand_kwh: Annotated[float, Field(ge=0)]
     solar_kwh: Annotated[float, Field(ge=0)]
     tariff_bdt_per_kwh: Annotated[float, Field(ge=0)]
@@ -83,33 +87,33 @@ class OptimizeRequest(BaseModel):
 class SolarReductionAdjustment(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
-    hours: list[Annotated[int, Field(ge=0, le=23)]]
+    hours: list[Hour]
     factor: Annotated[float, Field(ge=0.0, le=1.0)]
 
 
 class MinimumBatteryReserveAdjustment(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
-    hours: list[Annotated[int, Field(ge=0, le=23)]]
+    hours: list[Hour]
     minimum_energy_kwh: Annotated[float, Field(ge=0.0)]
 
 
 class NoChargeWindowAdjustment(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
-    hours: list[Annotated[int, Field(ge=0, le=23)]]
+    hours: list[Hour]
 
 
 class NoDischargeWindowAdjustment(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
-    hours: list[Annotated[int, Field(ge=0, le=23)]]
+    hours: list[Hour]
 
 
 class MaxGridWindowAdjustment(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
-    hours: list[Annotated[int, Field(ge=0, le=23)]]
+    hours: list[Hour]
     max_grid_kwh: Annotated[float, Field(ge=0.0)]
 
 
@@ -126,8 +130,8 @@ StructuredAdjustment = Union[
 class DirectiveInterpretation(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
-    note_index: Annotated[int, Field(ge=0)]
-    applies: bool
+    note_index: NoteIndex
+    applies: Annotated[bool, Field(strict=True)]
     directive_type: DirectiveType
     structured_adjustment: StructuredAdjustment = None
     explanation: Annotated[str, Field(min_length=1)]
@@ -156,7 +160,7 @@ class LLMInterpretationOutput(BaseModel):
 class HourlyPlanRow(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
-    hour: Annotated[int, Field(ge=0, le=23)]
+    hour: Hour
     grid_kwh: Annotated[float, Field(ge=0.0)]
     solar_used_kwh: Annotated[float, Field(ge=0.0)]
     battery_action: BatteryAction

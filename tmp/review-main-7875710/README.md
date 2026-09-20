@@ -7,8 +7,6 @@
 
 Backend service for **StackFellas SmartGrid AI**, built for the **BUP CSE Fest 2026 Hackathon (Preliminary Round)**.
 
-Live service: `https://stackfellas-gridwise-llm.onrender.com`
-
 The service receives a 24-hour campus energy scenario (demand, solar forecast, grid tariff) alongside 1–3 natural-language campus operator notes. It uses an LLM to interpret operator directives into structured constraints, validates them deterministically, optimizes grid electricity costs using linear programming (`scipy.optimize.linprog`), and independently replays the schedule for validation before returning a 24-hour operating plan.
 
 ---
@@ -68,7 +66,6 @@ The service receives a 24-hour campus energy scenario (demand, solar forecast, g
 - **Battery State Tracking**: The optimizer enforces per-hour energy balance and cumulative battery bounds while respecting charge/discharge caps and reserve constraints.
 - **Two-stage optimization**: Stage 1 minimizes grid electricity cost only; Stage 2 keeps that cost optimal while minimizing battery throughput.
 - **Independent Solution Replay**: Every schedule is re-verified hour-by-hour prior to output emission to guarantee exact feasibility for the published constraints and directives.
-- **Time-window canonicalization**: The LLM determines the semantic directive and values. When an original note includes an explicit clock range, deterministic code reconstructs the official `[start, end)` hour list before optimization. For example, `6 PM until 10 PM` becomes `[18, 19, 20, 21]`, and `noon until 2 PM` becomes `[12, 13]`.
 
 ### Request Rules
 
@@ -246,7 +243,7 @@ Run unit tests and verify optimization against ground-truth interpretations for 
 pytest -v
 ```
 
-The suite includes the 10 official public optimization cases, directive validation, explicit time-window regressions, API error handling, timeout behavior, overlapping solar reductions, and paraphrase contract cases. Current baseline: 71 passing tests.
+The suite currently includes the 10 official public optimization cases, directive validation, API error handling, timeout behavior, overlapping solar reductions, and 24 paraphrase contract cases. The current baseline is 50 passing tests.
 
 ### Live LLM Test Script
 
@@ -266,7 +263,7 @@ python scripts/test_live_llm.py \
   --health-timeout 10
 ```
 
-The live runner checks each response against the public reference directive semantics, replays the entire hourly plan against those directives using the same independent validator as the API, recomputes totals, compares cost within `0.01` BDT, and exits non-zero on any failure. It requires a running API configured with OpenRouter and `openai/gpt-4o-mini`.
+The live runner checks `/health`, validates the optimization response shape, compares `total_cost_bdt` with the public reference within `0.01` BDT, and exits non-zero on any failure. It requires a running API configured with a real OpenAI-compatible provider.
 
 ### Real-LLM Benchmarks
 
@@ -296,8 +293,6 @@ The API returns a JSON object with an `error` object for controlled failures:
 | 503 | `llm_not_configured` | Required LLM settings are missing. |
 | 504 | `request_timeout` | The total 30-second request deadline was exceeded. |
 | 500 | `invalid_solution`, `internal_error` | Unexpected internal or replay-validation failure. |
-
-The LLM is used only for semantic interpretation of operator notes. Deterministic validation protects the optimizer from malformed provider output, and SciPy `linprog` produces the cost-minimizing schedule. API keys are supplied only through environment variables and are never committed or returned by the API.
 
 ---
 

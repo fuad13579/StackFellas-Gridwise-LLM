@@ -29,14 +29,13 @@ CRITICAL INSTRUCTIONS:
 
 5. TIME WINDOW CONVENTION:
    - Hours are 0 to 23 representing 1-hour intervals [hour, hour+1).
-   - Convert both clock times first to 24-hour integers (start_hour, end_hour), then output hours list = list(range(start_hour, end_hour)).
-   - "6 PM until 10 PM" (18:00 to 22:00) -> start_hour=18, end_hour=22 -> hours [18, 19, 20, 21].
-   - "7 PM until 9 PM" (19:00 to 21:00) -> start_hour=19, end_hour=21 -> hours [19, 20].
-   - "1 PM to 3 PM" (13:00 to 15:00) -> start_hour=13, end_hour=15 -> hours [13, 14].
-   - "noon until 2 PM" (12:00 to 14:00) -> start_hour=12, end_hour=14 -> hours [12, 13].
-   - "2 PM to 4 PM" (14:00 to 16:00) -> start_hour=14, end_hour=16 -> hours [14, 15].
-   - "2 AM to 5 AM" (02:00 to 05:00) -> start_hour=2, end_hour=5 -> hours [2, 3, 4].
-   - If a note contains two explicit clock endpoints, Python independently reconstructs the final [start, end) hours from the original note. Still provide the best tentative hours list.
+   - Convert both clock times first, then use range(start_hour, end_hour) [start-inclusive, end-exclusive].
+   - Example: "6 PM until 10 PM" -> start=18, end=22 -> hours [18, 19, 20, 21].
+   - "1 PM to 3 PM" (13:00 to 15:00) -> hours [13, 14].
+   - "noon until 2 PM" (12:00 to 14:00) -> hours [12, 13].
+   - "2 PM to 4 PM" (14:00 to 16:00) -> hours [14, 15].
+   - "2 AM to 5 AM" (02:00 to 05:00) -> hours [2, 3, 4].
+   - "6 PM until 9 PM" (18:00 to 21:00) -> hours [18, 19, 20].
    - "hours" MUST be an array of unique integers from 0 through 23 in ascending order.
 
 6. NEVER alter base demand, tariffs, or battery parameters directly. Do not invent directive types outside the 6 supported types.

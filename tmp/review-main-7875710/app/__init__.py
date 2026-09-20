@@ -1,0 +1,1 @@
+"""StackFellas SmartGrid AI backend."""

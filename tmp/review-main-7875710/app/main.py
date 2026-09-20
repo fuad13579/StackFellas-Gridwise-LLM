@@ -2,6 +2,8 @@
 
 import logging
 import time
+from typing import Any
+
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.encoders import jsonable_encoder
@@ -54,14 +56,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
             "error": {
                 "code": "invalid_request",
                 "message": "The request body is malformed or structurally invalid.",
-                "details": [
-                    {
-                        "type": error.get("type", "validation_error"),
-                        "loc": list(error.get("loc", ())),
-                        "msg": error.get("msg", "Invalid request value"),
-                    }
-                    for error in exc.errors()
-                ],
+                "details": jsonable_encoder(exc.errors()),
             }
         },
     )
@@ -69,9 +64,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-    logger.error("Unhandled internal exception")
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug("Unhandled exception details", exc_info=True)
+    logger.error("Unhandled exception: %s", exc, exc_info=True)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
@@ -90,7 +83,7 @@ async def health_check() -> dict[str, str]:
 
 
 @app.post("/optimize-energy", status_code=status.HTTP_200_OK, response_model=OptimizeResponse)
-def optimize_energy(req: OptimizeRequest) -> OptimizeResponse:
+async def optimize_energy(req: OptimizeRequest) -> OptimizeResponse:
     settings = get_settings()
     deadline = time.monotonic() + settings.request_timeout_seconds
 

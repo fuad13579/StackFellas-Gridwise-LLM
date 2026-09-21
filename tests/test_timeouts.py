@@ -11,6 +11,14 @@ from app.llm.interpreter import LLMInterpreter
 from app.optimizer.solver import solve_optimization
 
 
+def test_llm_interpreter_not_configured_is_http_500():
+    with pytest.raises(AppError) as excinfo:
+        LLMInterpreter(Settings()).interpret(None)
+
+    assert excinfo.value.code == "llm_not_configured"
+    assert excinfo.value.status_code == 500
+
+
 def test_llm_interpreter_rejects_an_expired_request_deadline():
     settings = Settings(
         llm_api_url="https://example.com/v1/chat/completions",
@@ -22,6 +30,7 @@ def test_llm_interpreter_rejects_an_expired_request_deadline():
         LLMInterpreter(settings).interpret(None, deadline=time.monotonic() - 1)
 
     assert excinfo.value.code == "request_timeout"
+    assert excinfo.value.status_code == 500
 
 
 def test_solver_rejects_an_expired_request_deadline():
@@ -35,3 +44,4 @@ def test_solver_rejects_an_expired_request_deadline():
         )
 
     assert excinfo.value.code == "request_timeout"
+    assert excinfo.value.status_code == 500

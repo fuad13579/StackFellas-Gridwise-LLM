@@ -29,13 +29,13 @@ class LLMInterpreter:
             raise AppError(
                 "llm_not_configured",
                 "Set LLM_API_URL, LLM_API_KEY, and LLM_MODEL before optimizing.",
-                503,
+                500,
             )
         timeout = settings.llm_timeout_seconds
         if deadline is not None:
             timeout = min(timeout, deadline - time.monotonic())
             if timeout <= 0:
-                raise AppError("request_timeout", "The optimization request exceeded its time limit.", 504)
+                raise AppError("request_timeout", "The optimization request exceeded its time limit.", 500)
         try:
             with httpx.Client(
                 timeout=timeout,
@@ -56,7 +56,7 @@ class LLMInterpreter:
                 response.raise_for_status()
         except httpx.HTTPError as exc:
             logger.warning("LLM provider request failed: %s", type(exc).__name__)
-            raise AppError("llm_unavailable", "The LLM provider request failed.", 502) from exc
+            raise AppError("llm_unavailable", "The LLM provider request failed.", 500) from exc
 
         try:
             choice = response.json()["choices"][0]
@@ -71,5 +71,5 @@ class LLMInterpreter:
             return content
         except (ValueError, TypeError, KeyError, IndexError, AttributeError) as exc:
             raise AppError(
-                "invalid_llm_output", "The LLM provider returned an invalid completion.", 502
+                "invalid_llm_output", "The LLM provider returned an invalid completion.", 500
             ) from exc

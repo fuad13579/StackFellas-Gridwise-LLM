@@ -66,4 +66,4 @@ def explicit_time_window_hours(note: str) -> list[int] | None:
         return None
     if start < end:
         return list(range(start, end))
-    return list(range(start, 24)) + list(range(0, end))
+    return sorted(list(range(start, 24)) + list(range(0, end)))

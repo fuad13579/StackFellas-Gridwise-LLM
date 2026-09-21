@@ -1,149 +1,105 @@
-# SECOND PASS AUDIT
+# GridWise LLM Audit
 
-## Scope
+Date: 2026-09-21
 
-This second-pass audit checks the repository as it exists today against the official GridWise LLM challenge contract and the implementation currently in the codebase.
+This audit describes the repository as it exists after overnight time-window canonicalization, official HTTP status alignment, test expansion, README correction, and restoration of the tracked official problem documents.
 
-## Verified repository state
+## Verified implementation
 
-The repository contains the actual implementation files for the challenge, including:
+Present and in use:
 
-- `app/main.py`
-- `app/schemas.py`
-- `app/config.py`
-- `app/errors.py`
-- `app/llm/`
-- `app/directives/`
-- `app/optimizer/`
-- `README.md`
-- `Dockerfile`
-- `requirements.txt`
-- `tests/`
+- `app/main.py` — `GET /health` (async) and synchronous `POST /optimize-energy`
+- `app/schemas.py` — official request/response field names
+- `app/llm/` — OpenRouter-compatible client (`openai/gpt-4o-mini`)
+- `app/directives/time_windows.py` — deterministic `[start, end)` hour lists, overnight ranges sorted
+- `app/directives/validator.py` — guardrails plus explicit-window hour replacement
+- `app/optimizer/solver.py` — two-stage SciPy `linprog` (cost, then throughput)
+- `app/optimizer/validator.py` — independent schedule replay
+- `README.md`, `docs/API_CONTRACT.md`, `Dockerfile`, `requirements.txt`, `tests/`
+- Official documents: `tmp/official/BUP_CSE_FEST_2026_Preliminary_Problem_Statement_GridWise_LLM.txt` and `tmp/official/BUP_CSE_FEST_2026_Participant_Guide_&_Evaluation_Rubric_GridWise_LLM.txt`
 
-This audit is based on live code inspection and verification commands, not on an empty workspace assumption.
+Stale nested review snapshot `tmp/review-main-7875710/` is removed. Public sample cases remain at `BUP_CSE_FEST_2026_Preli_Public_Sample_Cases.json`.
 
-## 1) API contract check
+## 1) API contract
 
-### Verified endpoints
+Endpoints:
 
-The implementation exposes the required endpoints:
+- `GET /health` → HTTP 200 `{"status": "ok"}`
+- `POST /optimize-energy` → HTTP 200 on success
 
-- `GET /health` in `app/main.py`
-- `POST /optimize-energy` in `app/main.py`
+HTTP status mapping (official BUP codes only):
 
-The health route returns:
+| Status | JSON `error.code` | Meaning |
+| --- | --- | --- |
+| 400 | `invalid_request` | Malformed or structurally invalid request |
+| 422 | `infeasible` | Well-formed request with no feasible schedule |
+| 500 | `llm_unavailable`, `invalid_llm_output`, `llm_not_configured`, `request_timeout`, `invalid_solution`, `internal_error` | Provider/config/timeout/replay/internal failure |
 
-```json
-{"status": "ok"}
-```
+`409`, `502`, `503`, and `504` are no longer used.
 
-The request schema is implemented in `app/schemas.py` with the required contract:
+Malformed JSON and schema violations return JSON-safe 400 bodies. Tracebacks and secrets are not returned.
 
-- `scenario_id`
-- `operator_notes`
-- `hours`
-- `battery`
+## 2) Time windows
 
-Directive validation for the supported directive types is implemented in `app/directives/validator.py`.
+Explicit clock ranges in the original note replace LLM-supplied `hours` before hour-list validation.
 
-### Contract fit summary
+Same-day `[start, end)`:
 
-The project currently matches the critical official endpoint names and response style required by the problem statement.
+- `6 PM to 10 PM` → `[18, 19, 20, 21]`
+- `2 PM to 5 PM` → `[14, 15, 16]`
+- `noon to 2 PM` → `[12, 13]`
 
-No blocking contract mismatch was found in the route layer after review.
+Overnight ranges wrap, then sort (optimizer treats the list as a set of hour indices):
 
-## 2) LLM interpretation and validation
+- `10 PM to 2 AM` → `[0, 1, 22, 23]`
+- `11 PM to 1 AM` → `[0, 23]`
+- `9 PM to midnight` → `[21, 22, 23]`
 
-The system includes a real LLM usage path via:
+`and` is a range separator only in `between START and END`. Plain “6 PM and 10 PM” is not treated as a continuous window.
 
-- `app/llm/interpreter.py`
-- `app/llm/prompt.py`
+Final lists are sorted, unique, and in `0..23`. Directive type and numeric values are unchanged. SAMPLE-07 is covered by this path (`[18, 19, 20, 21]`, cost `38550.0`).
 
-The application validates the returned JSON before optimization, using:
+## 3) Pipeline
 
-- `validate_directives()`
-- `DirectiveInterpretation`
-- `LLMInterpretationOutput`
+1. LLM interprets notes (OpenRouter, `openai/gpt-4o-mini`).
+2. Deterministic validation and explicit-window canonicalization.
+3. Constraint normalization and LP solve (event loop not blocked; sync route).
+4. Independent replay of the 24-hour plan.
 
-The guardrails enforce:
+## 4) Tests
 
-- exactly one entry per note
-- note_index ordering
-- applies semantics for `no_op` vs non-`no_op`
-- hours arrays must be unique and within 0..23
-- only supported directive types are accepted
-
-This matches the key official requirement that notes are converted into a structured, validated directive format before solving.
-
-## 3) Documentation check
-
-The README was reviewed against the required content checklist. It includes:
-
-- project summary
-- architecture
-- setup
-- .env variables
-- run locally
-- Docker
-- `GET /health`
-- `POST /optimize-energy`
-- sample request and response
-- test instructions
-
-This satisfies the challenge documentation requirement in the repository as it exists today.
-
-## 4) Deployment check
-
-The project includes:
-
-- `Dockerfile`
-- `requirements.txt`
-- `.env.example`
-
-The app is Docker-ready and the container launch command is documented in the README.
-
-## 5) Actual verification evidence
-
-I ran the project test suite:
+Offline:
 
 ```bash
 pytest -q
 ```
 
-Result:
+Result: **94 passed**, 0 failed, 0 warnings.
 
-- 20 passed in 4.83s
+Coverage includes the 10 public cases, same-day and overnight windows, full validator integration, API status-code contract, timeouts, overlap normalization, and paraphrases.
 
-I also verified the API route layer and schemas through the implemented tests, which cover:
+Live (local API, real OpenRouter, 2026-09-21):
 
-- health endpoint
-- malformed request handling
-- successful optimization flow
-- public-case validation
+```text
+LIVE TESTED
+10 PASSED / 0 FAILED
+SAMPLE-07 cost 38550.0 (reference 38550, diff 0.0)
+```
 
-## 6) Risks still worth watching
+The live runner checked directive semantics, independent schedule replay, and totals for all 10 official public cases.
 
-The project is in good shape for the current codebase, but there are still operational caveats:
+## 5) Documentation and deployment
 
-1. The LLM is required to be configured with valid environment variables before `POST /optimize-energy` can succeed.
-2. The app does not hide the requirement for a real model endpoint; it expects an OpenAI-compatible provider.
-3. The runtime depends on correct `.env` configuration and on the model returning a valid JSON structure.
+README matches the current implementation: 94 tests, SAMPLE-07 fix, deterministic time windows, OpenRouter / `openai/gpt-4o-mini`, strict live validation, sync FastAPI route, official `[start, end)` semantics, and the 400/422/500 error table.
 
-These are environment and integration requirements, not code defects in the repo itself.
+Docker and Render packaging remain as previously documented. Live Render was not re-checked after the HTTP status-code change; local live tests used `http://127.0.0.1:8000`.
 
-## 7) Final verdict
+## 6) Remaining risks
 
-After the second-pass review, the repository does not show any blocking bug in the current implementation.
+- Render must be redeployed before the public URL serves the new HTTP status mapping.
+- `POST /optimize-energy` still requires valid `LLM_API_URL`, `LLM_API_KEY`, and `LLM_MODEL`.
+- On this Windows machine, AVG HTTPS scanning can block Python TLS unless `python.exe` is excepted. That is an environment issue, not an application defect.
 
-The project is in a good state with:
+## Verdict
 
-- correct endpoint structure
-- valid request and response models
-- deterministic directive validation
-- solver and validator logic in place
-- documentation present
-- all tests passing
-
-## Conclusion
-
-No critical bug was found in the current implementation during this second-pass check, and the repository passes the available verification set.
+No blocking defect was found in the current implementation. Overnight windows, official HTTP codes, restored official docs, README, offline tests, and live public-case verification are aligned with the competition contract.

@@ -246,7 +246,7 @@ Run unit tests and verify optimization against ground-truth interpretations for 
 pytest -v
 ```
 
-The suite includes the 10 official public optimization cases, directive validation, explicit same-day and overnight time-window regressions (including SAMPLE-07), API error-status contract checks, timeout behavior, overlapping solar reductions, and paraphrase contract cases. Current baseline: 87 passing tests.
+The suite includes the 10 official public optimization cases, directive validation, explicit same-day and overnight time-window regressions (including SAMPLE-07), API error-status contract checks, timeout behavior, overlapping solar reductions, and paraphrase contract cases. Current baseline: 94 passing tests.
 
 ### Live LLM Test Script
 

@@ -144,5 +144,5 @@ def validate_directives(raw_output: str, request: OptimizeRequest) -> list[Direc
         raise AppError(
             "invalid_llm_output",
             "The LLM output failed deterministic directive validation.",
-            502,
+            500,
         ) from exc

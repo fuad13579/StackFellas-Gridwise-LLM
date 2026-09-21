@@ -122,7 +122,5 @@ Errors return a JSON object with error code, message, and optional details.
 | HTTP Code | Error Code | Description |
 | --- | --- | --- |
 | 400 | `invalid_request` | Malformed JSON or structurally invalid request. |
-| 422 | `invalid_directives` / `unsupported_notes` | Semantically invalid request or directives. |
-| 500 | `invalid_solution` / `internal_error` | Independent solution check failure or internal error. |
-| 502 | `llm_unavailable` / `invalid_llm_output` | Provider network failure or unparseable completion. |
-| 503 | `llm_not_configured` / `optimization_failed` | Missing configuration or LP solver failure. |
+| 422 | `infeasible` | Semantically valid request with no feasible schedule. |
+| 500 | `llm_unavailable` / `invalid_llm_output` / `llm_not_configured` / `request_timeout` / `invalid_solution` / `internal_error` | Provider failure, invalid LLM completion, missing LLM configuration, timeout, replay failure, or other controlled internal error. |

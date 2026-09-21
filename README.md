@@ -55,7 +55,7 @@ The service receives a 24-hour campus energy scenario (demand, solar forecast, g
 ## Features & Supported Directives
 
 - **GET /health**: Instant process readiness check (`{"status": "ok"}`).
-- **POST /optimize-energy**: Complete scenario optimization pipeline within the 30-second deadline.
+- **POST /optimize-energy**: Synchronous FastAPI route that runs the full interpretation and optimization pipeline within the 30-second deadline without blocking the event loop.
 - **Strict request validation**: Invalid JSON and schema violations return JSON-safe HTTP 400 errors.
 - **Bounded runtime**: The API uses a total 30-second request deadline shared by the LLM and optimizer stages.
 - **Supported Operator Directives**:
@@ -68,7 +68,7 @@ The service receives a 24-hour campus energy scenario (demand, solar forecast, g
 - **Battery State Tracking**: The optimizer enforces per-hour energy balance and cumulative battery bounds while respecting charge/discharge caps and reserve constraints.
 - **Two-stage optimization**: Stage 1 minimizes grid electricity cost only; Stage 2 keeps that cost optimal while minimizing battery throughput.
 - **Independent Solution Replay**: Every schedule is re-verified hour-by-hour prior to output emission to guarantee exact feasibility for the published constraints and directives.
-- **Time-window canonicalization**: The LLM determines the semantic directive and values. When an original note includes an explicit clock range, deterministic code reconstructs the official `[start, end)` hour list before optimization. For example, `6 PM until 10 PM` becomes `[18, 19, 20, 21]`, and `noon until 2 PM` becomes `[12, 13]`.
+- **Time-window canonicalization**: The LLM determines the semantic directive and values. When an original note includes an explicit clock range, deterministic code reconstructs the official `[start, end)` hour list, then returns sorted unique hour indices. Same-day examples: `6 PM to 10 PM` → `[18, 19, 20, 21]`, `2 PM to 5 PM` → `[14, 15, 16]`, `noon to 2 PM` → `[12, 13]`. Overnight windows wrap and are then sorted, so `10 PM to 2 AM` → `[0, 1, 22, 23]` and `9 PM to midnight` → `[21, 22, 23]`. SAMPLE-07 is covered by this path.
 
 ### Request Rules
 
@@ -122,7 +122,7 @@ REQUEST_TIMEOUT_SECONDS=30
 LOG_LEVEL=INFO
 ```
 
-`LLM_API_URL`, `LLM_API_KEY`, and `LLM_MODEL` are required for `/optimize-energy`. The service starts without them so `/health` and offline tests remain available, but optimization requests return HTTP 503 until an LLM provider is configured. Never commit `.env` or real API keys.
+`LLM_API_URL`, `LLM_API_KEY`, and `LLM_MODEL` are required for `/optimize-energy`. The service starts without them so `/health` and offline tests remain available, but optimization requests return HTTP 500 (`llm_not_configured`) until an LLM provider is configured. Never commit `.env` or real API keys.
 
 ---
 
@@ -246,7 +246,7 @@ Run unit tests and verify optimization against ground-truth interpretations for 
 pytest -v
 ```
 
-The suite includes the 10 official public optimization cases, directive validation, explicit time-window regressions, API error handling, timeout behavior, overlapping solar reductions, and paraphrase contract cases. Current baseline: 71 passing tests.
+The suite includes the 10 official public optimization cases, directive validation, explicit same-day and overnight time-window regressions (including SAMPLE-07), API error-status contract checks, timeout behavior, overlapping solar reductions, and paraphrase contract cases. Current baseline: 87 passing tests.
 
 ### Live LLM Test Script
 
@@ -266,7 +266,7 @@ python scripts/test_live_llm.py \
   --health-timeout 10
 ```
 
-The live runner checks each response against the public reference directive semantics, replays the entire hourly plan against those directives using the same independent validator as the API, recomputes totals, compares cost within `0.01` BDT, and exits non-zero on any failure. It requires a running API configured with OpenRouter and `openai/gpt-4o-mini`.
+The live runner checks each response against the public reference directive semantics, replays the entire hourly plan against those directives using the same independent validator as the API, recomputes totals, compares cost within `0.01` BDT, and exits non-zero on any failure. It requires a running API configured with OpenRouter and `openai/gpt-4o-mini`. SAMPLE-07 is included in the official public set and is validated the same way.
 
 ### Real-LLM Benchmarks
 
@@ -291,11 +291,8 @@ The API returns a JSON object with an `error` object for controlled failures:
 | Status | Code examples | Meaning |
 | --- | --- | --- |
 | 400 | `invalid_request` | Malformed JSON or invalid request schema, including whitespace-only notes. |
-| 409 | `infeasible` | No schedule satisfies the scenario and directive constraints. |
-| 502 | `llm_unavailable`, `invalid_llm_output` | Provider failure or rejected model output. |
-| 503 | `llm_not_configured` | Required LLM settings are missing. |
-| 504 | `request_timeout` | The total 30-second request deadline was exceeded. |
-| 500 | `invalid_solution`, `internal_error` | Unexpected internal or replay-validation failure. |
+| 422 | `infeasible` | Semantically valid request, but no schedule satisfies the scenario and directive constraints. |
+| 500 | `llm_unavailable`, `invalid_llm_output`, `llm_not_configured`, `request_timeout`, `invalid_solution`, `internal_error` | Provider failure, invalid LLM completion, missing LLM configuration, request timeout, replay-validation failure, or other controlled internal error. |
 
 The LLM is used only for semantic interpretation of operator notes. Deterministic validation protects the optimizer from malformed provider output, and SciPy `linprog` produces the cost-minimizing schedule. API keys are supplied only through environment variables and are never committed or returned by the API.
 
@@ -332,7 +329,7 @@ curl http://localhost:8000/health
 .
 ├── app/
 │   ├── directives/
-│   │   ├── normalizer.py   # Maps directives to normalized LP constraints
+│   │   ├── time_windows.py # Deterministic [start, end) hour canonicalization
 │   │   └── validator.py    # Deterministic LLM output guardrails
 │   ├── llm/
 │   │   ├── interpreter.py  # HTTP client for LLM completions

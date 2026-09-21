@@ -23,7 +23,7 @@ def solve_optimization(
     """Solves the 24-hour energy cost minimization LP using scipy.optimize.linprog."""
 
     if deadline is not None and deadline <= time.monotonic():
-        raise AppError("request_timeout", "The optimization request exceeded its time limit.", 504)
+        raise AppError("request_timeout", "The optimization request exceeded its time limit.", 500)
 
     # Decision variables (96 total):
     # 0..23: g_h (grid purchase)
@@ -115,7 +115,7 @@ def solve_optimization(
     if deadline is not None:
         solver_time_limit = min(solver_time_limit, deadline - time.monotonic())
         if solver_time_limit <= 0:
-            raise AppError("request_timeout", "The optimization request exceeded its time limit.", 504)
+            raise AppError("request_timeout", "The optimization request exceeded its time limit.", 500)
 
     res = linprog(
         c_stage1,
@@ -133,7 +133,7 @@ def solve_optimization(
         raise AppError(
             "infeasible",
             "No feasible energy schedule satisfies all constraints and directives.",
-            409,
+            422,
         )
 
     # Stage 2: among schedules with the same optimal grid cost, minimize
@@ -149,7 +149,7 @@ def solve_optimization(
     if deadline is not None:
         solver_time_limit = min(settings.solver_time_limit_seconds, deadline - time.monotonic())
         if solver_time_limit <= 0:
-            raise AppError("request_timeout", "The optimization request exceeded its time limit.", 504)
+            raise AppError("request_timeout", "The optimization request exceeded its time limit.", 500)
 
     res_stage2 = linprog(
         c_stage2,

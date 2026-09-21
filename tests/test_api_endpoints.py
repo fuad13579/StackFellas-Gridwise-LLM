@@ -142,3 +142,89 @@ def test_health_is_responsive_while_sync_optimization_runs_in_threadpool(mock_in
 
     assert health.status_code == 200
     assert elapsed < 0.2
+
+
+def _optimize_payload(notes, extra_battery=None):
+    payload = {
+        "scenario_id": "API-CONTRACT",
+        "operator_notes": notes,
+        "hours": [
+            {"hour": h, "demand_kwh": 100.0, "solar_kwh": 0.0, "tariff_bdt_per_kwh": 5.0}
+            for h in range(24)
+        ],
+        "battery": {
+            "capacity_kwh": 200.0,
+            "initial_energy_kwh": 100.0,
+            "minimum_energy_kwh": 100.0,
+            "max_charge_kwh_per_hour": 50.0,
+            "max_discharge_kwh_per_hour": 50.0,
+        },
+    }
+    if extra_battery:
+        payload["battery"].update(extra_battery)
+    return payload
+
+
+@patch("app.main.get_settings")
+def test_optimize_energy_llm_not_configured_returns_500(mock_get_settings):
+    from app.config import Settings
+
+    mock_get_settings.return_value = Settings()
+    response = client.post("/optimize-energy", json=_optimize_payload(["The cafeteria menu changes tomorrow."]))
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "llm_not_configured"
+
+
+@patch("app.main.LLMInterpreter")
+def test_optimize_energy_invalid_llm_output_returns_500(mock_interpreter_cls):
+    mock_interpreter_cls.return_value.interpret.return_value = "not-json"
+    response = client.post("/optimize-energy", json=_optimize_payload(["Do not charge between 2 PM and 4 PM."]))
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "invalid_llm_output"
+
+
+@patch("app.main.LLMInterpreter")
+def test_optimize_energy_provider_failure_returns_500(mock_interpreter_cls):
+    from app.errors import AppError
+
+    mock_interpreter_cls.return_value.interpret.side_effect = AppError(
+        "llm_unavailable", "The LLM provider request failed.", 500
+    )
+    response = client.post("/optimize-energy", json=_optimize_payload(["Do not charge between 2 PM and 4 PM."]))
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "llm_unavailable"
+
+
+@patch("app.main.LLMInterpreter")
+def test_optimize_energy_timeout_returns_500(mock_interpreter_cls):
+    from app.errors import AppError
+
+    mock_interpreter_cls.return_value.interpret.side_effect = AppError(
+        "request_timeout", "The optimization request exceeded its time limit.", 500
+    )
+    response = client.post("/optimize-energy", json=_optimize_payload(["Do not charge between 2 PM and 4 PM."]))
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "request_timeout"
+
+
+@patch("app.main.LLMInterpreter")
+def test_optimize_energy_infeasible_returns_422(mock_interpreter_cls):
+    mock_interpreter_cls.return_value.interpret.return_value = json.dumps(
+        {
+            "directive_interpretation": [
+                {
+                    "note_index": 0,
+                    "applies": True,
+                    "directive_type": "max_grid_window",
+                    "structured_adjustment": {
+                        "hours": list(range(24)),
+                        "max_grid_kwh": 0,
+                    },
+                    "explanation": "Grid import is capped at zero.",
+                }
+            ]
+        }
+    )
+    response = client.post("/optimize-energy", json=_optimize_payload(["Cap grid import at 0 kWh all day."]))
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "infeasible"

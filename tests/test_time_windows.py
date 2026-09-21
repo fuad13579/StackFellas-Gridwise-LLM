@@ -21,8 +21,12 @@ from app.schemas import BatteryInput, HourInput, OptimizeRequest
         ("Limit the feeder between 7 PM and 9 PM.", [19, 20]),
         ("Solar work from noon until 2 PM.", [12, 13]),
         ("No discharge from 13:00 to 15:00.", [13, 14]),
+        ("Keep reserve from 6 PM to 10 PM.", [18, 19, 20, 21]),
+        ("No charging from 2 PM to 5 PM.", [14, 15, 16]),
+        ("Solar work from noon to 2 PM.", [12, 13]),
         ("Reserve the battery from 9 PM to midnight.", [21, 22, 23]),
-        ("No charging from 10 PM to 2 AM.", [22, 23, 0, 1]),
+        ("No charging from 10 PM to 2 AM.", [0, 1, 22, 23]),
+        ("No charging from 11 PM to 1 AM.", [0, 23]),
     ],
 )
 def test_explicit_time_window_hours(note, expected):
@@ -75,7 +79,11 @@ def test_validator_replaces_bad_llm_hours_with_original_note_window():
 
     result = validate_directives(raw, request)
 
-    assert result[0].structured_adjustment.hours == [18, 19, 20, 21]
+    hours = result[0].structured_adjustment.hours
+    assert hours == [18, 19, 20, 21]
+    assert hours == sorted(set(hours))
+    assert all(0 <= h <= 23 for h in hours)
+    assert result[0].directive_type.value == "minimum_battery_reserve"
     assert result[0].structured_adjustment.minimum_energy_kwh == 90
 
     response = solve_optimization(
@@ -105,3 +113,59 @@ def test_sample_07_bad_llm_window_becomes_valid_official_cost():
     validate_solution(request, constraints, response)
     assert directives[0].structured_adjustment.hours == [18, 19, 20, 21]
     assert response.total_cost_bdt == 38550.0
+
+
+def _reserve_request(note: str) -> OptimizeRequest:
+    return OptimizeRequest(
+        scenario_id="OVERNIGHT-REGRESSION",
+        operator_notes=[note],
+        hours=[HourInput(hour=h, demand_kwh=100, solar_kwh=0, tariff_bdt_per_kwh=5) for h in range(24)],
+        battery=BatteryInput(
+            capacity_kwh=250,
+            initial_energy_kwh=150,
+            minimum_energy_kwh=40,
+            max_charge_kwh_per_hour=60,
+            max_discharge_kwh_per_hour=60,
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("note", "llm_hours", "expected"),
+    [
+        ("Keep at least 90 kWh from 6 PM to 10 PM.", [18, 19, 20], [18, 19, 20, 21]),
+        ("Keep at least 90 kWh from 2 PM to 5 PM.", [14, 16], [14, 15, 16]),
+        ("Keep at least 90 kWh from noon to 2 PM.", [12], [12, 13]),
+        ("Keep at least 90 kWh from 10 PM to 2 AM.", [22, 23, 0, 1], [0, 1, 22, 23]),
+        ("Keep at least 90 kWh from 11 PM to 1 AM.", [23, 0], [0, 23]),
+        ("Keep at least 90 kWh from 9 PM to midnight.", [21, 22], [21, 22, 23]),
+    ],
+)
+def test_validator_canonicalizes_explicit_windows_including_overnight(note, llm_hours, expected):
+    request = _reserve_request(note)
+    raw = json.dumps(
+        {
+            "directive_interpretation": [
+                {
+                    "note_index": 0,
+                    "applies": True,
+                    "directive_type": "minimum_battery_reserve",
+                    "structured_adjustment": {
+                        "hours": llm_hours,
+                        "minimum_energy_kwh": 90,
+                    },
+                    "explanation": "Emergency reserve.",
+                }
+            ]
+        }
+    )
+
+    result = validate_directives(raw, request)
+    hours = result[0].structured_adjustment.hours
+
+    assert hours == expected
+    assert hours == sorted(hours)
+    assert len(hours) == len(set(hours))
+    assert all(0 <= hour <= 23 for hour in hours)
+    assert result[0].directive_type.value == "minimum_battery_reserve"
+    assert result[0].structured_adjustment.minimum_energy_kwh == 90

@@ -1,8 +1,10 @@
 .env
+tmp/
+.pytest_cache/
 __pycache__/
+*.pyc
 *.py[cod]
 *$py.class
-.pytest_cache/
 .coverage
 htmlcov/
 .venv/

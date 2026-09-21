@@ -81,6 +81,7 @@ def test_invalid_applies_for_no_op():
     with pytest.raises(AppError) as excinfo:
         validate_directives(raw, req)
     assert excinfo.value.code == "invalid_llm_output"
+    assert excinfo.value.status_code == 500
 
 
 def test_unsorted_hours():
@@ -108,6 +109,7 @@ def test_unsorted_hours():
     with pytest.raises(AppError) as excinfo:
         validate_directives(raw, req)
     assert excinfo.value.code == "invalid_llm_output"
+    assert excinfo.value.status_code == 500
 
 
 def test_invalid_llm_output_does_not_echo_raw_content():
@@ -116,3 +118,4 @@ def test_invalid_llm_output_does_not_echo_raw_content():
     with pytest.raises(AppError) as excinfo:
         validate_directives(raw, req)
     assert "must-not-echo" not in excinfo.value.message
+    assert excinfo.value.status_code == 500

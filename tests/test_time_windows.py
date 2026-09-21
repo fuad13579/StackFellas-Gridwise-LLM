@@ -19,6 +19,7 @@ from app.schemas import BatteryInput, HourInput, OptimizeRequest
         ("Keep reserve from 6 PM until 10 PM.", [18, 19, 20, 21]),
         ("No charging from 2 PM until 5 PM.", [14, 15, 16]),
         ("Limit the feeder between 7 PM and 9 PM.", [19, 20]),
+        ("Keep reserve between 6 PM and 10 PM.", [18, 19, 20, 21]),
         ("Solar work from noon until 2 PM.", [12, 13]),
         ("No discharge from 13:00 to 15:00.", [13, 14]),
         ("Keep reserve from 6 PM to 10 PM.", [18, 19, 20, 21]),
@@ -43,6 +44,19 @@ def test_clock_token_to_hour(token, expected):
 
 def test_vague_time_does_not_get_invented():
     assert explicit_time_window_hours("Keep a reserve later tonight.") is None
+
+
+@pytest.mark.parametrize(
+    "note",
+    [
+        "Do not charge at 6 PM and 10 PM.",
+        "Keep a reserve at 6 PM and 10 PM.",
+        "from 6 PM and 10 PM",
+        "6 PM and 10 PM",
+    ],
+)
+def test_plain_and_is_not_a_range_without_between(note):
+    assert explicit_time_window_hours(note) is None
 
 
 def test_validator_replaces_bad_llm_hours_with_original_note_window():
@@ -139,6 +153,7 @@ def _reserve_request(note: str) -> OptimizeRequest:
         ("Keep at least 90 kWh from 10 PM to 2 AM.", [22, 23, 0, 1], [0, 1, 22, 23]),
         ("Keep at least 90 kWh from 11 PM to 1 AM.", [23, 0], [0, 23]),
         ("Keep at least 90 kWh from 9 PM to midnight.", [21, 22], [21, 22, 23]),
+        ("Keep at least 90 kWh between 6 PM and 10 PM.", [18, 19, 20], [18, 19, 20, 21]),
     ],
 )
 def test_validator_canonicalizes_explicit_windows_including_overnight(note, llm_hours, expected):
@@ -169,3 +184,23 @@ def test_validator_canonicalizes_explicit_windows_including_overnight(note, llm_
     assert all(0 <= hour <= 23 for hour in hours)
     assert result[0].directive_type.value == "minimum_battery_reserve"
     assert result[0].structured_adjustment.minimum_energy_kwh == 90
+
+
+def test_validator_does_not_invent_range_from_plain_and():
+    request = _reserve_request("Do not charge at 6 PM and 10 PM.")
+    raw = json.dumps(
+        {
+            "directive_interpretation": [
+                {
+                    "note_index": 0,
+                    "applies": True,
+                    "directive_type": "no_charge_window",
+                    "structured_adjustment": {"hours": [18, 22]},
+                    "explanation": "Two discrete hours.",
+                }
+            ]
+        }
+    )
+    result = validate_directives(raw, request)
+    assert result[0].structured_adjustment.hours == [18, 22]
+    assert result[0].directive_type.value == "no_charge_window"

@@ -12,10 +12,11 @@ _CLOCK_TOKEN = r"""
 
 _TIME_RANGE = re.compile(
     rf"""
-    (?:\b(?:from|between)\s+)?
-    (?P<start>{_CLOCK_TOKEN})
-    \s*(?:until|to|and|-)\s*
-    (?P<end>{_CLOCK_TOKEN})
+    (?:
+        \bbetween\s+(?P<bstart>{_CLOCK_TOKEN})\s*(?:until|to|and|-)\s*(?P<bend>{_CLOCK_TOKEN})
+        |
+        (?:\bfrom\s+)?(?P<start>{_CLOCK_TOKEN})\s*(?:until|to|-)\s*(?P<end>{_CLOCK_TOKEN})
+    )
     """,
     re.IGNORECASE | re.VERBOSE,
 )
@@ -60,8 +61,8 @@ def explicit_time_window_hours(note: str) -> list[int] | None:
     match = _TIME_RANGE.search(note)
     if not match:
         return None
-    start = clock_token_to_hour(match.group("start"))
-    end = clock_token_to_hour(match.group("end"))
+    start = clock_token_to_hour(match.group("bstart") or match.group("start"))
+    end = clock_token_to_hour(match.group("bend") or match.group("end"))
     if start is None or end is None or start == end:
         return None
     if start < end:
